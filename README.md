@@ -1,8 +1,19 @@
 # spark-data-apps
 
-````docker build -f spark.Dockerfile -t spark .````
-````docker build -f spark-master.Dockerfile -t spark-master .````
-````docker build -f spark-worker.Dockerfile -t spark-worker .````
-````docker-compose up````
+#### You can easily run this locally on your local docker engine, please follow the steps below:
+
+1. Clone this repository locally
+2. Install docker locally
+3. Start docker engine locally
+4. Go to the cloned repository directory i.e. Spark-data-apps
+5. Run docker build (spark) as follows : ````docker build -f spark.Dockerfile -t spark .````
+6. Run docker build (master) as follows : ````docker build -f spark-master.Dockerfile -t spark-master .````
+7. Run docker build (master) as follows : ````docker build -f spark-master.Dockerfile -t spark-master .````
+8. Run docker as follows: ````docker-compose up````
+7. Check if the master web UI opens : http://localhost:8080
+9. Check if the worker1 web UI open: http://localhost:8081
+10. Check if the worker2 web UI open: http://localhost:8082
+
+
 
 
