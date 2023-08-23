@@ -67,9 +67,83 @@ df.selectExpr("*","(DEST_COUNTRY_NAME = ORIGIN_COUNTRY_NAME) as WITHIN_COUNTRY")
 //aggregations
 df.selectExpr("avg(count) as average_flights", "count(distinct ORIGIN_COUNTRY_NAME) as unique_origins").show()
 
+//how to use literals for contant values
+df.selectExpr("*", "1 as one").show(2)
+df.select(expr("*"), expr("1 as one")).show(2)
+df.select(expr("*"), lit(1).as("one")).show(2)
 
+//adding columns
+df.withColumn("One",expr("1")).show(2)
+df.withColumn("One",lit("1")).show(2)
+df.withColumn("Route", expr("ORIGIN_COUNTRY_NAME =  DEST_COUNTRY_NAME")).show(2)
 
+//renaming columns
+df.withColumnRenamed("ORIGIN_COUNTRY_NAME",  "org country").withColumnRenamed("DEST_COUNTRY_NAME","dest country").show(2)
+//(escape)reserved characters e.g. whitespaces
+val df_new = df.withColumnRenamed("ORIGIN_COUNTRY_NAME",  "org country").withColumnRenamed("DEST_COUNTRY_NAME","dest country")
+df_new.selectExpr("`dest country` as `destination country`","`org country` as `origin country`").show(2)
+df_new.select(col("dest country").as("destination country")).show(2) // no escape char needed here
+df.select(concat(col("ORIGIN_COUNTRY_NAME"),lit("-"),col("DEST_COUNTRY_NAME"))).show(2)
 
+//case senstivitiy by default not, change config as follow
+set spark.sql.caseSensitive true
+
+//drop columns
+df_new.drop("count").show(2) //only for show
+df_new.drop("count").columns // to create ot overwrite the dataframe
+
+//column type cast
+df.select(col("count").cast("long")).show(2)
+
+//filtering row
+df.filter(col("count")>5000).show()
+df.where("count > 5000").show()
+df.where(col("count") > 100).where("count < 120").show()
+df.where(col("ORIGIN_COUNTRY_NAME") === "Qatar").where("count < 120").show()
+
+//unique records
+df.select("DEST_COUNTRY_NAME" , "ORIGIN_COUNTRY_NAME").distinct().show(2)
+df.select("DEST_COUNTRY_NAME" , "ORIGIN_COUNTRY_NAME").distinct().count()
+
+//randon samples
+val seed = 5
+val withReplacement = false
+val fraction = 0.5
+df.sample(withReplacement, fraction, seed).count()
+
+//random splits , useful to split dataframe into multiple pieces randomly
+val df_splits = df.randomSplit(Array(0.3,0.2,.5))
+df_splits(0).show(2)
+df_splits(1).show(2)
+df_splits(2).show(2)
+
+//concatenating and appending rows
+val df_schema = df.schema // copy existing df schema
+import org.apache.spark.sql.Row //import Row obj lib
+val row = Row("Hello","World",10L) //create a row object
+val arr_row=Array(row, row, row,row) // array of row objets
+val par_rows = sc.parallelize(arr_row) // parallelize row objects
+val new_df = spark.createDataFrame(par_rows,df_schema) //create df from row obj and schema 
+new_df.show()//view new df
+df.union(new_df).count()) // union count
+val combined_df = df.union(new_df) // new df with combined two dfs
+
+//sort rows
+df.sort("ORIGIN_COUNTRY_NAME").show(5)
+df.orderBy("ORIGIN_COUNTRY_NAME").show(5)
+import org.apache.spark.sql.functions.{asc,desc}
+df.orderBy(asc("ORIGIN_COUNTRY_NAME")).show(5)
+df.orderBy(desc("ORIGIN_COUNTRY_NAME")).show(5)
+//limit
+df.limit(3).show()
+//num of partitions
+df.rdd.getNumPartitions
+//repartition, schuffle partitions , performance intensive and expensive
+df.repartition(5)
+df.repartition(col("DEST_COUNTRY_NAME"))
+df.repartition(5,col("DEST_COUNTRY_NAME"))
+// reduce partitions without reshuffle and no performance impact
+ df.repartition(5,col("DEST_COUNTRY_NAME")).coalesce(2).rdd.getNumPartitions
 
 
 
