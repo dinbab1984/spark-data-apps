@@ -70,3 +70,79 @@ df.select(rtrim(lit(" HELLO ")).as("rtrim")).show(1)
 df.select(trim(lit(" HELLO ")).as("trim")).show(1)
 df.select(lpad(lit("HELLO"), 10, " ").as("lp")).show(1)
 df.select(rpad(lit("HELLO"), 10, " ").as("rp")).show(1)
+
+//regular expression
+//regex_Replace
+val list = Seq("Blue Sky","Green Leaf","Red Soil","White Milk")
+val sc_rdd = sc.parallelize(list)
+sc_rdd.collect()
+sc_rdd.toDF().select(regexp_replace(upper(col("value")),"WHITE|RED|GREEN|BLUE","Some Color").alias("Replaced"),col("value")).show(false)
+
+//replace characters with another characters
+sc_rdd.toDF().select(translate(upper(col("value")),"KYM","EAF").alias("Replaced"),col("value")).show(false)
+
+//regexp_extract
+sc_rdd.toDF().select(regexp_extract(upper(col("value")),"(WHITE|RED|GREEN|BLUE)",1).alias("extracted"),col("value")).show(false)
+
+//contains text
+sc_rdd.toDF().select(col("value"),upper(col("value")).contains("RED").or(upper(col("value")).contains("BLUE")).alias("RedorBlue?")).show()
+
+// adding dynamic columns based on the list of values
+c_rdd.toDF().select(color.map(c => { upper(col("value")).contains(c).alias(s"is_$c")}):+expr("*"):_*).show()
+//:+expr("..") -- append columns
+//:_* (seems syntax for dynamic columns)
+
+//Working with Dates and Timestamps
+val df = spark.range(1)
+//current date
+df.withColumn("current_date",current_date()).show()
+//current timestamp
+ df.withColumn("current_timestamp",current_timestamp()).show(false)
+//add days to current date 
+df.withColumn("today+7",date_add(current_date,7)).show()
+//subtract days to current date 
+df.withColumn("today_time-7",date_sub(current_timestamp,7)).show()
+//date difference
+df.withColumn("datediff",datediff(current_date(),to_date(lit("2023-12-31")))).show()
+df.withColumn("datediff",datediff(current_date(),to_date(lit("2022-12-31")))).show()
+//months_between
+df.withColumn("months",months_between(current_date(),to_date(lit("2022-12-31")))).show()
+// to date + date time format
+ df.withColumn("date1",to_date(lit("2022-12-31"))).show()
+ df.withColumn("date1",to_date(lit("2022-13-31"))).show() // return null in case wrong date
+ df.withColumn("date1",to_date(lit("2022-12-31"),"yyyy-MM-dd")).show()
+ df.withColumn("date1",to_timestamp(lit("2022-12-31 23:59:15"),"yyyy-MM-dd HH:mm:ss")).show()
+ df.withColumn("date1",to_timestamp(lit("2022-12-31 23:59:75"),"yyyy-MM-dd HH:mm:ss")).show() // return null in case wrong date or timestamp
+
+ //working with null values
+df.selectExpr("coalesce(null,'test') as test").show()
+df.selectExpr("ifnull(null,'test') as test").show()
+df.selectExpr("nvl(null,'test') as test").show()
+df.selectExpr("nvl2(null,null,'test') as test").show()
+//drop null rows
+val df_null = df.selectExpr("null id","null as dummy")
+df_null.na.drop("all").show()
+//drop rows if any column is null
+val df_any_null = df.selectExpr("id","null as dummy")
+df_any_null.na.drop().show() // default if any column is null
+df_any_null.na.drop("any").show()
+df.na.drop("all", Seq("col1", "col"))// only consider certain columns
+//na string fill
+val na_fill = Seq(("","LastName"),("FirstName",""),("MyFirst","MyLast"))
+val df_na_fill = sc.parallelize(na_fill).toDF("col1","col2")
+df_na_fill.withColumn("col1",when(col("col1")==="",null).otherwise(col("col1"))
+    ).withColumn("col2",when(col("col2")==="",null).otherwise(col("col2"))
+    ).na.fill("i am here when you are null").show(false)
+// map fill by column
+val na_fill_map = Map("col1" -> "i am here when col1 is null","col2" -> "i am here when col2 is null")
+df_na_fill.withColumn("col1",when(col("col1")==="",null).otherwise(col("col1"))
+    ).withColumn("col2",when(col("col2")==="",null).otherwise(col("col2"))
+    ).na.fill(na_fill_map).show(false)
+//replace one string with other by map
+df_na_fill.withColumn("col1",when(col("col1")==="",null).otherwise(col("col1"))
+    ).withColumn("col2",when(col("col2")==="",null).otherwise(col("col2"))
+    ).na.fill(na_fill_map
+    ).na.replace("col1",replace_map).na.replace("col2",replace_map).show(false)
+
+
+

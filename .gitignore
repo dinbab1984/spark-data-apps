@@ -1,6 +1,7 @@
 metastore_db/
 .metals/
 .vscode/
+.scala-build/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
