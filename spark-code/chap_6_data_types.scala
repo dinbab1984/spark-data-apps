@@ -144,5 +144,55 @@ df_na_fill.withColumn("col1",when(col("col1")==="",null).otherwise(col("col1"))
     ).na.fill(na_fill_map
     ).na.replace("col1",replace_map).na.replace("col2",replace_map).show(false)
 
+//Working with Complex Types 
+//structs e.g. dataframe within dataframe
+val list = Seq(("Name1","Street1","City1","PostCode1"),("Name2","Street2","City2","PostCode2"))
+val rdd_list = sc.parallelize(list)
+val df_list = rdd_list.toDF("Name","Street","City","PostCode")
+df_list.selectExpr("Name","(Street,City,PostCode) as address").show(false)
+df_list.selectExpr("Name","struct(Street,City,PostCode) as address").show(false)
+df_list.selectExpr("Name","(Street,City,PostCode) as Address").select("Name","Address.*").show(false)
+df_list.selectExpr("Name","(Street,City,PostCode) as Address").select("Name","Address.City").show(false)
+df_list.selectExpr("Name","(Street,City,PostCode) as Address").select(col("Name"),col("Address").getField("City")).show(false)
+
+//split, array, array_contains, array_length, explode, maps
+val names = Seq(("batch1","john clare anna chris maddy jenny"),("batch2","david william joe tina"))
+val df_names = sc.parallelize(names).toDF("Batch","Persons")
+df_names.select(col("Batch"),split(col("Persons")," ").alias("Person_list")).show(false)
+df_names.select(col("Batch"),split(col("Persons")," ").alias("Person_list")).selectExpr("Person_list[2]").show(false)
+df_names.select(col("Batch"),size(split(col("Persons")," ")).alias("Person_count")).show(false)
+df_names.select(col("Batch"),array_contains(split(col("Persons")," "),"david").alias("david_found?")).show(false)
+df_names.select(col("Batch"),explode(split(col("Persons")," ")).alias("Person")).show(false)
+df_names.select(col("Batch"),col("Persons"),explode(split(col("Persons")," ")).alias("Person")).show(false)
+
+//maps
+val maps = Seq(("1","IN","India"),("2","DE","Germany"))
+val df_maps = sc.parallelize(maps).toDF("no","country_code","country_name")
+df_maps.select(map(col("country_code"),col("country_name")).as("country_map")).selectExpr("*","country_map['IN'] as IN_name").show()
+df_maps.select(map(col("country_code"),col("country_name")).as("country_map")).select(explode(col("country_map"))).show()
+
+//working with JSON
+val df_json = spark.range(1).selectExpr("""'{"data": { "id" : 1, "name": "spark"}}' as jsonString""")
+df_json.select(get_json_object(col("jsonString"),"$.data.name").alias("name")).show()
+df_json.select(json_tuple(col("jsonString"),"data").alias("data")).show(false)
+
+val df = sc.parallelize(Seq(("IN","India"),("DE","Germany"))).toDF("id","country")
+df.select(to_json(struct(col("id"),col("country"))).as("json")).show(false)
+
+import org.apache.spark.sql.types.{StructType,StructField,IntegerType,StringType}
+
+val schema = StructType(Array(StructField("id",StringType,true),StructField("country",StringType,true)))
+df.select(to_json(struct(col("id"),col("country"))).as("json")).select(col("json"),from_json(col("json"),schema).as("parsed")).show(false)
+
+
+//User Defined functions
+def power3(n:Double):Double = n * n * n
+power3(3.0)
+//register in sparksession
+val udf_power3 = udf(power3(_:Double):Double)
+df.select(udf_power3(col("id"))).show()
+//register as sql function
+spark.udf.register("power3",power3(_:Double):Double)
+df.selectExpr("power3(id)").show() // use with expression
 
 
