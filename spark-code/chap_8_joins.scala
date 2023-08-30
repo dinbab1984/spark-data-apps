@@ -53,4 +53,12 @@ val renamed_graduateProgram = graduateProgram.withColumnRenamed("id","grad_id")
 renamed_graduateProgram.join(person,person.col("graduate_program") === renamed_graduateProgram.col("grad_id")).show()
 
 //how spark perform joins
+//communication strategies: 1) all-to-all nodes , per node
+//big-table join big-table : every records all to all commnication
+//small-table join big-table : all to all commication ,
+//  but spark intelligently do broadcast join, by making copy in all nodes, 
+//  only first or one-time. so still less expesive
+// spark does it by default, if not, can be forced by hint as follows
+person.join(graduateProgram, person.col("graduate_program") === graduateProgram.col("id")).explain()
+person.join(broadcast(graduateProgram), person.col("graduate_program") === graduateProgram.col("id")).explain()
 
