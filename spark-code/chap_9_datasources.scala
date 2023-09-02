@@ -62,17 +62,63 @@ spark.read.format("orc").load("data/flight-data/orc/2010-summary.orc").show(5)
 df_csv_src.write.format("orc").save("tmp/flight-data-2010-summary.orc")
 
 //Reading and writing to SQL Databases
-////SQL Lite
+////postgres
 ////Read from database table
-val driver = "org.sqlite.JDBC"
-val path = "/data/flight-data/jdbc/my-sqlite.db"
-val url = s"jdbc:sqlite:/${path}"
-val tablename = "flight_info"
-//connection test
-import java.sql.DriverManager
-val connection = DriverManager.getConnection("jdbc:sqlite:/data/flight-data/jdbc/my-sqlite.db")
-connection.isClosed()
-connection.close()
+val dbDataFrame = spark.read.format("jdbc").option(
+    "url", "jdbc:postgresql://localhost:5432/sample-db"
+    ).option("dbtable", "flight_info"
+    ).option("user","postgres").option("password","Password123"
+    ).load()
+////Query pushdowns
+dbDataFrame.select("DEST_COUNTRY_NAME").distinct().explain()
+dbDataFrame.filter("DEST_COUNTRY_NAME in ('Anguilla', 'Sweden')").explain
+////pass query in place of table name
+val dbDataFrame = spark.read.format("jdbc").option(
+    "url", "jdbc:postgresql://localhost:5432/sample-db"
+    ).option("dbtable", """(SELECT DISTINCT "DEST_COUNTRY_NAME" FROM flight_info) as flight_info"""
+    ).option("user","postgres").option("password","Password123"
+    ).load()
+////reading in parallel (partitions)
+val dbDataFrame = spark.read.format("jdbc").option(
+    "url", "jdbc:postgresql://localhost:5432/sample-db"
+    ).option("dbtable", "flight_info"
+    ).option("user","postgres").option("password","Password123"
+    ).option("numPartitions",10).load()
+//predicates to force and split the data into partitions by condition for data processing optimizaton
+//// another API jdbc
+val conn_props = new java.util.Properties
+conn_props.setProperty("user", "postgres")
+conn_props.setProperty("password", "Password123")
+val predicates = Array(""""DEST_COUNTRY_NAME" = 'India' OR "ORIGIN_COUNTRY_NAME" = 'India'""",
+    """"DEST_COUNTRY_NAME" = 'Germany' OR "ORIGIN_COUNTRY_NAME" = 'Germany'""")
+spark.read.jdbc("jdbc:postgresql://localhost:5432/sample-db","flight_info",predicates,conn_props)
+spark.read.jdbc("jdbc:postgresql://localhost:5432/sample-db","flight_info",predicates,conn_props).show()
+spark.read.jdbc("jdbc:postgresql://localhost:5432/sample-db","flight_info",predicates,conn_props).rdd.getNumPartitions
+spark.read.jdbc("jdbc:postgresql://localhost:5432/sample-db","flight_info",predicates,conn_props).explain()
+////Cautions while using predicates, if the condition true for more than one then duplicate rows across paritions
+val predicates = Array(""""DEST_COUNTRY_NAME" != 'India' OR "ORIGIN_COUNTRY_NAME" != 'India'""",
+    """"DEST_COUNTRY_NAME" != 'Germany' OR "ORIGIN_COUNTRY_NAME" != 'Germany'""")
+spark.read.jdbc("jdbc:postgresql://localhost:5432/sample-db","flight_info",predicates,conn_props).count()//512 instead of 256
+//distribute data using sliding widows e.g. evenly into 10 partitions with col val boundaries (low 10 , high 1000000) 
+spark.read.jdbc("jdbc:postgresql://localhost:5432/sample-db"
+    ,"flight_info","COUNT",0L,1000000L,10
+    ,conn_props).rdd.getNumPartitions
+//write to SQL database tables
+//modes e.g. overwrite, append
+dbDataFrame.write.mode("append").jdbc("jdbc:postgresql://localhost:5432/sample-db","flight_info_test",conn_props)
+spark.read.jdbc("jdbc:postgresql://localhost:5432/sample-db","flight_info_test",conn_props).count()
 
-val dbDataFrame = spark.read.format("jdbc").option("url", "jdbc:sqlite:/data/flight-data/jdbc/my-sqlite.db"
-).option("dbtable", "flight_info").option("driver", "org.sqlite.JDBC").load()
+//Advanced I/O 
+////writing into partitions
+////fixed number of partitions
+val dbDataFrame = spark.read.jdbc("jdbc:postgresql://localhost:5432/sample-db","flight_info",conn_props)
+dbDataFrame.repartition(5).write.format("csv").save("tmp/flight-info/csv/paritions")
+////partition by column
+dbDataFrame.write.format("parquet").mode("overwrite").partitionBy("DEST_COUNTRY_NAME").save("tmp/flight-info/csv/partitionBy")
+////buckets (same bucket id load into same partitions) - supported only for Spark-managed tables
+dbDataFrame.write.format("parquet").mode("overwrite").bucketBy(10, "count").saveAsTable("bucketedFiles")
+////Working with Complex Types
+/////For instance, CSV files do not support complex types, whereas Parquet and ORC do.
+////Managing File Size
+dbDataFrame.write.format("csv").mode("overwrite").option("maxRecordsPerFile", 64).save("tmp/flight-info/csv/64recordsperfile")
+

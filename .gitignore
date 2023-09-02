@@ -3,6 +3,7 @@ metastore_db/
 .vscode/
 .scala-build/
 tmp/
+spark-warehouse/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
