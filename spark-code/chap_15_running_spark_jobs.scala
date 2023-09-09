@@ -1,3 +1,4 @@
+// Execution --> Job --> Stages (sometimes skipped) --> Tasks (partition level + shuffles , etc.,)
 val ds1 = spark.range(2,1000000,2) //e.g. Stage 1 : 4 - 8 partitions (tasks)
 val ds2 = spark.range(2,1000000,4) //e.g. Stage 2 : 4 - 8 partitions (tasks)
 val step1 = ds1.repartition(5) //e.g. Stage 3 : repartition  / shuffles : 5 tasks
