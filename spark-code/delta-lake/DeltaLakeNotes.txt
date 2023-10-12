@@ -1,0 +1,123 @@
+Delta Lake:
+--------------
+Merge into
+1. delta table, view or path (delta.'/tmp/source')
+2. when matched (and condition1 then delete or update * or update set - so on) 
+3. when not matched (and condition1 then insert* or insert cols - so on)
+4. when matched by source (and condition1 then delete or update set - so on) -- hint: here condition1 helps to avoid full target write
+
+Table:
+1. Create : 
+	Dataframe.write.saveAsTable('tablename')
+	Create table if not exists <dml>
+	create or replace table <dml>
+	create table <t2> like <t1>
+	DeltaTable.createIfNotExist(spark).tableName('t1').addColumn('c1','INT').execute()
+	DeltaTable.createIfNotExist(spark).addColumn('c1','INT').location('/tmp/source').execute()
+	DeltaTable.createOrReplace(spark).tableName('t1').addColumn('c1','INT').execute()
+	DeltaTable.createOrReplace(spark).addColumn('c1','INT').location('/tmp/source').execute()
+2. Insert into
+	Insert into table -- append data
+	Insert overwrite into table -- replace data
+3. Update 
+	Update table set
+	Update delta.'/tmp/source' set
+4. Delete
+	Delete from table where condition1
+	Delete from delta.'/tmp/source' where condition1
+5. Describe
+	Describe history table - version , operation, changes
+6. Time travel
+	select * from table version as of <version>
+	select * from table timestamp as of <timestamp> -- can be a date or timestamp
+7. Optimize 
+	optimze tablename -- small file into large ones -- does have an impact on history? - to be checked in handson
+	Optimize tablename ZORDER BY <column> - group same value of column into same files, does have an impact on history? - to be checked in handson
+8. vacuum
+	vacuum tablename -- remove unused snapshots/files
+	
+Selective overwrites
+1. replaceWhere 
+-- df.write.mode("overwrite").option("replaceWhere",condition1).save(filepath) 
+-- insert into table t1 replace where condition1 select * from replace_data
+-- replace the matching data in filepath with df
+-- fails if the df/replace_data contains additionl data outside of the condition1
+-- additional data outside of the condition1 can be insert with the checkConstraint has been disabled with config
+-- also, older version only condition1 with partition column works, it can be enabled by disabling the datacolumns flag in th config
+2. Dynamic Overwrties
+-- can be enabled via partitionOverwriteMode=dynamic, default=static
+--df.write.mode("overwrite").option("partitionOverwriteMode", "dynamic").save(filepath)
+--insert overwrite table t1 select * from df
+--replaces the values of matching partition from df
+-- df.write option has precedence than session config
+-- df.write both options fails
+-- df.write option overwriteschema is not allowed
+-- how about new data , guess will be inserted -- to be checked
+
+History log and data retention, time travel, restore, transaction log checkpoints
+-- Describe history table or 'path' or delta.'path'
+-- Describe history table limit 1 -- only last one
+-- stored in storage alongside with data fuels in directory _delta_log
+-- logretentionduration default (table/file level) is 30 days
+-- contains version, timestamp, user , actions, metrics, etc 
+-- vacumm deletes old unused data files, 
+-- vacuum - if runs daily with default config deletedfileretentionduration = 7 days (default)
+-- Time travel 
+	- select * from table as of version or date or timestamp or timestamp_expression (subqueries not allowed)
+	- also, select * from table@[version, yyyyMMddHHmmssSSS]
+-- transaction log checkpoints - optimized version json log files into parquet checkpoints file
+-- restore 
+	-- restore table t1 to version as of <version>
+	-- restore table t1 to timestamp as of <timestamp>
+	-- restore not possible if old files where deleted manually or by vacuum
+	-- it is also change data operation , adds new version in transaction log and trigger downstream app e.g. streaming , so may cause data duplicates
+
+Vacuum
+-- vacumm deletes old unused data files, 
+-- vacuum - if runs daily with default config deletedfileretentionduration = 7 days (default)
+-- VACUUM eventsTable   -- vacuum files not required by versions older than the default retention period
+-- VACUUM '/data/events' -- vacuum files in path-based table
+-- VACUUM delta.`/data/events/`
+-- VACUUM delta.`/data/events/` RETAIN 100 HOURS  -- vacuum files not required by versions more than 100 hours old
+-- VACUUM eventsTable DRY RUN    -- do dry run to get the list of files to be deleted
+-- still topics to cover
+
+Liquid clustering
+-- replaces partition and z order, improve query performance using cluster keys
+-- used when filter by high cardinality columns, high skew data distribution, table grow quickly/ high tuning maintenance, concurrent writes, acces pattern changes
+-- create table t1 (cols ) using delta cluster by (col);
+-- create external table t1 cluster by (col) location 'filepath' as select * from t2;
+-- create table t1 like t2 -- copies the configuration of cluster by of t2
+-- converting choosing cluster keys -- partition . z order column , 
+-- reduce conflicts b/w row level concurrent operations such as optimize, insert ,merge , update or delete.
+-- writing to cluster table 
+-- Create table t1 cluster by col as select * from t2
+-- insert into , copy into from parquet,  spark.write.format('delta').mode('append')
+-- optimize t1 , trigger clustering
+-- read cluster table , select * from t1 where cluster_key_col = value
+-- change cluster keys, alter table t1 cluster by (col1, col2)
+-- remove cluster keys , alter table t1 cluster by none
+-- describe table or detail t1 -- view cluster keys
+-- cluster key only with column collected statistics , default only 32 cols (count each field if nested), max. 4 keys, structured streaming not supported
+
+Data Skipping and Z order
+-- dataSkippingNumIndexedCols helps to add mode cols collecting statistics, 
+-- stats collect is expensive for expensive long string cols, to avoid either config dataSkippingNumIndexedCols or move cols position larger than the config.
+-- Z order to move the data colocated for specified cols , is not idempotent
+-- optimize table (where col1 condition1) zorder by col2; -- collect stats is important for zorder to work , otherwise its ineffective
+
+Optimize
+-- improve query performance by coalesce small files to large ones
+-- is idempotent, re-run have same effect
+-- Optimize t1, optimize delta.'filepath', subset only then : optimize table where condition1;
+
+
+
+
+
+
+
+
+
+
+
