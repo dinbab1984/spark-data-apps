@@ -95,10 +95,10 @@ Liquid clustering
 -- insert into , copy into from parquet,  spark.write.format('delta').mode('append')
 -- optimize t1 , trigger clustering
 -- read cluster table , select * from t1 where cluster_key_col = value
--- change cluster keys, alter table t1 cluster by (col1, col2)
--- remove cluster keys , alter table t1 cluster by none
+-- change cluster keys, alter table t1 cluster by (col1, col2) -- note: only subsequent write consider new cluster keys
+-- remove cluster keys , alter table t1 cluster by none -- note : does not rewrite the data already clustered
 -- describe table or detail t1 -- view cluster keys
--- cluster key only with column collected statistics , default only 32 cols (count each field if nested), max. 4 keys, structured streaming not supported
+-- cluster key work only with columns collected statistics , default only 32 cols (count each field if nested), max. 4 keys, structured streaming not supported
 
 Data Skipping and Z order
 -- dataSkippingNumIndexedCols helps to add mode cols collecting statistics, 
