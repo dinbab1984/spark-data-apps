@@ -111,7 +111,94 @@ Optimize
 -- is idempotent, re-run have same effect
 -- Optimize t1, optimize delta.'filepath', subset only then : optimize table where condition1;
 
+Change Data Feed
+-- Table level changes such as (change types) Insert, Update, delete aare captured along with version and timestamp in addition to table data.
+-- enabled using the configuration delta.enableChangeDataFeed = true, changes are captured only from the time enabled
+-- Only following operations are effect - Merge, udpate , delete, insert only or partition delete do not have any effect.
+-- Enable statement 
+	- CREATE TABLE student (id INT, name STRING, age INT) TBLPROPERTIES (delta.enableChangeDataFeed = true)
+	- ALTER TABLE myDeltaTable SET TBLPROPERTIES (delta.enableChangeDataFeed = true)
+	- for all new tables : set spark.databricks.delta.properties.defaults.enableChangeDataFeed = true;
+-- List table changes
+	- SELECT * FROM table_changes('tableName', 0, 10) -- Version start and end
+	- SELECT * FROM table_changes('tableName', '2021-04-21 05:45:46', '2021-05-21 12:00:00') -- timestamp start and end
+	- SELECT * FROM table_changes('tableName', 0) -- version start only until latest
+	- SELECT * FROM table_changes('dbName.`dotted.tableName`', '2021-04-21 06:45:46' , '2021-05-21 12:00:00') -- escape char for . when schema
+	- SELECT * FROM table_changes_by_path('\path', '2021-04-21 05:45:46') -- when path specified
+-- Changes are stored in the same location as data under directory _change_data
+-- table changes have the same retention duration as the data e.g. deletedfileretentionduration, so VACUUM command delete changes along with data
+-- Reading changes as streaming
+	- with start version -- spark.readStream.format("delta").option("readChangeFeed", "true").option("startingVersion", 0).table("myDeltaTable")
+	- with start timestamp -- spark.readStream.format("delta").option("readChangeFeed", "true").option("startingTimestamp", "2021-04-21 05:35:43").load("/pathToMyDeltaTable")
+	- not providing version or timestamp so reads latest snapshot as insert - spark.readStream.format("delta").option("readChangeFeed", "true").table("myDeltaTable")
+-- OutofRange Error 
+	-- by default when user passes version or timestamp specified greater than last commit version or timestamp , an error is thrown
+	-- to supress the error , enable set spark.databricks.delta.changeDataFeed.timestampOutOfRange.enabled = true; 
+		-- when start version or timestamp specified greater than last commit version or timestamp, return empty result instead or error
+		-- when end version or timestamp specified greater than last commit version or timestamp, return changes until last commit instead of error
 
+Column Mapping
+-- Support changes to metadata e.g. delete or rename columns without making changes to data files
+-- Also allows to use chars in the column names which is not possible with Parquet such as spaces
+-- following chars allowed as well : ,;{}()\n\t=
+-- enabling column mapping of table
+	-  ALTER TABLE <table-name> SET TBLPROPERTIES ('delta.minReaderVersion' = '2','delta.minWriterVersion' = '5','delta.columnMapping.mode' = 'name')
+	- once enabled , can not be disabled . e.g 'delta.columnMapping.mode' = 'none' thrown an error
+-- Rename a column - ALTER TABLE <table-name> RENAME COLUMN old_col_name TO new_col_name
+-- Drop column(s) 
+	- ALTER TABLE table_name DROP COLUMN col_name
+	- ALTER TABLE table_name DROP COLUMNS (col_name_1, col_name_2, ...)
+-- schema tracking for streaming to support column mapping , otherwise streams break with non-additive schemas
+	- table (read) schemaTrackingLocation configured to checkPointLocation of Target (write) e.g. as below
+	- checkpoint_path = "/path/to/checkpointLocation"
+	- (spark.readStream.option("schemaTrackingLocation", checkpoint_path).table("delta_source_table")
+		.writeStream.option("checkpointLocation", checkpoint_path).toTable("output_table"))
+		
+Table Constraints
+-- supports two on delta lake such as Enforced constraints (ensure data quality and integrity) and Primary/Foreign keys (relationship b/w tables via columns)
+-- Enforced constraints are not null, checkConstraint e.g.
+	- CREATE TABLE people10m (id INT NOT NULL, firstName STRING NOT NULL, birthDate TIMESTAMP) USING DELTA; 
+	- ALTER TABLE people10m ALTER COLUMN firstName DROP NOT NULL;
+	- ALTER TABLE people10m ALTER COLUMN firstName SET NOT NULL;
+	- for nested column , NOT NULL should satisfy the parent also NOT NULL, columns nested in arrays or map do not support NOT NULL constraints
+	- ALTER TABLE people10m ADD CONSTRAINT dateWithinRange CHECK (birthDate > '1900-01-01');
+	- ALTER TABLE people10m DROP CONSTRAINT dateWithinRange;
+	- view the constraints by running - DESCRIBE DETAIL people10m or SHOW TBLPROPERTIES people10m
+-- Primary/Foreign key constraints
+	- Primary key and foreign key constraints require Unity Catalog and Delta Lake.
+	- Primary and foreign keys are informational only and are not enforced. 
+	- CREATE TABLE T(pk1 INTEGER NOT NULL, pk2 INTEGER NOT NULL, CONSTRAINT t_pk PRIMARY KEY(pk1, pk2));
+	- CREATE TABLE S(pk INTEGER NOT NULL PRIMARY KEY, fk1 INTEGER, fk2 INTEGER,CONSTRAINT s_t_fk FOREIGN KEY(fk1, fk2) REFERENCES T);
+	- not allowed in CTAS statement
+	
+View Table details
+-- describes description, location , created at, last modefied, partition columns, no. of files , size in bytes, properties , minReaderVersion/minWriterVersion
+-- DESCRIBE DETAIL '/data/events/'
+-- DESCRIBE DETAIL eventsTable
+
+User Defined Metadata
+-- aka. custom metadata and custom tags of delta lake tables
+-- fields in the Delta Lake transaction log to add custom tags to a table or messages for an individual commit.
+-- done by using the DataFrameWriter option userMetadata or the SparkSession configuration spark.databricks.delta.commitInfo.userMetadata.
+	- df.write.format("delta").mode("overwrite").option("userMetadata", "overwritten-for-fixing-incorrect-data").save("/tmp/delta/people10m")
+	- SET spark.databricks.delta.commitInfo.userMetadata=overwritten-for-fixing-incorrect-data
+	  INSERT OVERWRITE default.people10m SELECT * FROM morePeople
+-- Store own metadata as a table property using TBLPROPERTIES in CREATE and ALTER.
+	- ALTER TABLE default.people10m SET TBLPROPERTIES ('department' = 'accounting', 'delta.appendOnly' = 'true');
+	- SHOW TBLPROPERTIES default.people10m; -- Show all the properties of table.
+    - SHOW TBLPROPERTIES default.people10m ('department'); -- Show just the 'department' table property.
+
+
+Generated Columns
+--
+
+Idempotent Writes
+--
+
+Deletion Vectors
+--
+
+Schema Validation
 
 
 
