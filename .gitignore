@@ -1,5 +1,6 @@
 data/data-mart/
 data/staging/
+data/dbt/
 metastore_db/
 .metals/
 .vscode/
